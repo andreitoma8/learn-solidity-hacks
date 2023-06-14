@@ -4,7 +4,9 @@
 
 In Solidity, the reentrancy vulnerability is a type of security vulnerability where a function can be recursively called before its first invocation is finished, allowing an attacker to potentially change the state of the contract in unexpected ways. As the name of the hack suggests, this vulnerability is often exploited by calling back into the vulnerable contract, reentering the same function that is currently being executed and modifying the state of the contract before the first invocation is finished.
 
-## POC
+## Single Function Reentrancy
+
+### POC
 
 -   Contracts: [Reentrancy.sol](contracts/Reentrancy.sol)
 -   Test: `yarn test test/reentrancy.ts`
@@ -15,9 +17,9 @@ The DAO hack is one of the most famous hacks in the history of Ethereum. The DAO
 
 Read more about it [here](https://medium.com/swlh/the-story-of-the-dao-its-history-and-consequences-71e6a8a551ee).
 
-## Solutions:
+### Solutions:
 
--   Use the Checks-Effects-Interactions pattern, to ensure that all code paths through a contract complete all required checks of the supplied parameters before modifying the contract’s state (Checks); only then it makes any changes to the state (Effects); it may make calls to functions in other contracts after all planned state changes have been written to storage (Interactions). This is a common foolproof way to prevent reentrancy attacks, where an externally called malicious contract can double-spend an allowance, double-withdraw a balance, among other things, by using logic that calls back into the original contract before it has finalized its transaction.
+-   Use the `Checks-Effects-Interactions` pattern, to ensure that all code paths through a contract complete all required checks of the supplied parameters before modifying the contract’s state (Checks); only then it makes any changes to the state (Effects); it may make calls to functions in other contracts after all planned state changes have been written to storage (Interactions). This is a common foolproof way to prevent reentrancy attacks, where an externally called malicious contract can double-spend an allowance, double-withdraw a balance, among other things, by using logic that calls back into the original contract before it has finalized its transaction.
 
 Example:
 
@@ -33,7 +35,7 @@ Example:
             shares[msg.sender] = 0;
     }
 
-    // Checks-Effects-Interactions pattern
+    // `Checks-Effects-Interactions` pattern
     // Safe from reentrancy attack, because it implements the effects of the function before calling an external contract.
     function withdraw() public {
         // Checks
@@ -48,7 +50,7 @@ Example:
 
 ```
 
--   Use Reentrancy Guards like the OpenZeppelin ReentrancyGuard.sol contract. This contract implements a nonReentrant modifier that can be used to prevent reentrancy attacks. It is important to note that this contract only protects external function calls, and that external calls to nonReentrant functions are still vulnerable to reentrancy attacks. To protect against this, you can use the nonReentrant modifier in the function that calls the internal function. This solution is not the optimal one, since it costs more gas for adding
+-   Use `Reentrancy Guards` like the OpenZeppelin ReentrancyGuard.sol contract. This contract implements a nonReentrant modifier that can be used to prevent reentrancy attacks. It is important to note that this contract only protects external function calls, and that external calls to nonReentrant functions are still vulnerable to reentrancy attacks. To protect against this, you can use the nonReentrant modifier in the function that calls the internal function. This solution is not the optimal one, since it costs more gas for adding
 
 ```
     // Mapping of ether shares of the contract.
@@ -74,3 +76,48 @@ Example:
             shares[msg.sender] = 0;
     }
 ```
+
+## Cross-Function Reentrancy
+
+### POC
+
+-   Contracts: [CrossFunctionReentrancy.sol](contracts/CrossFunctionReentrancy.sol)
+-   Test: `yarn test test/crossFunctionReentrancy.ts`
+
+### Solutions:
+
+Same as in the Single Function Reentrancy, the `Checks-Effects-Interactions` pattern can be used to prevent reentrancy attacks, but now the `Reentrancy Guard` is no longer useful, since the function that is doing the callback is not reentered. Please see the example below and in the [PoC](contracts/CrossFunctionReentrancy.sol):
+
+```
+    mapping(address => uint256) public shares;
+
+    // This function is called in the callback of the attacker contract and is
+    // executed because the shares of the attacker have not been set to 0 yet
+    // by the withdraw function.
+    function transfer(address to, uint256 amount) public {
+        require(shares[msg.sender] >= amount);
+        shares[msg.sender] -= amount;
+        shares[to] += amount;
+    }
+
+    // Vulnerable to reentrancy attack, because it calls an external contract
+    // before implementing the effects of the function.
+    function withdraw() public {
+        (bool success,) = msg.sender.call{value: shares[msg.sender]}("");
+        if (success) {
+            shares[msg.sender] = 0;
+        }
+    }
+
+    function deposit() public payable {
+        shares[msg.sender] += msg.value;
+    }
+```
+
+In this example, the attacker contract would:
+
+1. Deposit some ETH into the target contract.
+2. Call the withdraw function of the target contract.
+3. In the callback, call the transfer function of the target contract and transfer all the shares of the attacker to another wallet controlled by the attacker.
+4. The withdraw function would then set the shares of the attacker to 0, but the attacker would have already transferred all their shares to another wallet.
+5. From the attacker's wallet, the attacker would call the withdraw function again and withdraw again the same amount of ETH, draining the contract.

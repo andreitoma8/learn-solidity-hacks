@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "hardhat/console.sol";
-
 contract ReentrancyVulnerable {
     // Mapping of ether shares of the contract.
     mapping(address => uint256) shares;
@@ -40,6 +38,8 @@ contract ReentrancyAttacker {
 
     // Fallback function to receive funds.
     fallback() external payable {
+        // When receiving funds, the vulnerable contract is called again
+        // until the attacker contract runs out funds
         if (address(vulnerable).balance >= msg.value) {
             vulnerable.withdraw();
         }
