@@ -121,3 +121,43 @@ In this example, the attacker contract would:
 3. In the callback, call the transfer function of the target contract and transfer all the shares of the attacker to another wallet controlled by the attacker.
 4. The withdraw function would then set the shares of the attacker to 0, but the attacker would have already transferred all their shares to another wallet.
 5. From the attacker's wallet, the attacker would call the withdraw function again and withdraw again the same amount of ETH, draining the contract.
+
+## Read Only Reentrancy
+
+Read only reentrancy is similar in the sense that it has the same root cause: calling an external contract before implementing the effects of the function. The difference is that instead of re-entering the contract that does the callback, the attacker contract calls another contract that only reads the state of that contract and exploits the fact that the state effects of the function have not been finalized yet.
+
+### POC
+
+-   Contracts: [ReadOnlyReentrancy.sol](contracts/ReadOnlyReentrancy.sol)
+-   Test: `yarn test test/readOnlyReentrancy.ts`
+
+### Solutions:
+
+At this point I think you've guessed it, the solution is the exact same one: follow the `Checks-Effects-Interactions` pattern. Please see the example below and in the [PoC](contracts/ReadOnlyReentrancy.sol):
+
+```
+    mapping(address => uint256) public shares;
+
+    function withdraw() public {
+        // Interactions
+        (bool success,) = msg.sender.call{value: shares[msg.sender]}("");
+        // Effects
+        if (success) {
+            shares[msg.sender] = 0;
+        }
+    }
+```
+
+And here is the correct implementation of the `withdraw` function, following the pattern:
+
+```
+    mapping(address => uint256) public shares;
+
+    function withdraw() public {
+        // Effects
+        uint256 amount = shares[msg.sender];
+        shares[msg.sender] = 0;
+        // Interactions
+        (bool success,) = msg.sender.call{value: amount}("");
+    }
+```
