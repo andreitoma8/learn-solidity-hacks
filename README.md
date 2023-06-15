@@ -52,14 +52,14 @@ Example:
 
 -   Use `Reentrancy Guards` like the OpenZeppelin ReentrancyGuard.sol contract. This contract implements a nonReentrant modifier that can be used to prevent reentrancy attacks. It is important to note that this contract only protects external function calls, and that external calls to nonReentrant functions are still vulnerable to reentrancy attacks. To protect against this, you can use the nonReentrant modifier in the function that calls the internal function. This solution is not the optimal one, since it costs more gas for adding
 
-```
+```solidity
     // Mapping of ether shares of the contract.
     mapping(address => uint) shares;
     // bool representing whether function is currently being executed.
     bool entered = false;
 
-    // Reentrancy Guard sets entered to true before executing the function and sets it to false after the function is finished.
-    // so if the function is called again before it is finished, it will revert.
+    // Reentrancy Guard sets entered to true before executing the function and sets it to false after
+    // the function is finished so if the function is called again before it is finished, it will revert.
     modifier nonReentrant() {
         require(!entered);
         entered = true;
@@ -67,8 +67,8 @@ Example:
         entered = false;
     }
 
-    // Would be vulnerable to reentrancy attack, because it calls an external contract before implementing the effects of the function
-    // in the body, but the nonReentrant modifier prevents this.
+    // Would be vulnerable to reentrancy attack, because it calls an external contract before implementing the
+    // effects of the function in the body, but the nonReentrant modifier prevents this.
     function withdraw() public nonReentrant {
         require(shares[msg.sender] > 0);
         (bool success,) = msg.sender.call{value: shares[msg.sender]}("");
@@ -88,7 +88,7 @@ Example:
 
 Same as in the Single Function Reentrancy, the `Checks-Effects-Interactions` pattern can be used to prevent reentrancy attacks, but now the `Reentrancy Guard` is no longer useful, since the function that is doing the callback is not reentered. Please see the example below and in the [PoC](contracts/CrossFunctionReentrancy.sol):
 
-```
+```solidity
     mapping(address => uint256) public shares;
 
     // This function is called in the callback of the attacker contract and is
@@ -135,7 +135,7 @@ Read only reentrancy is similar in the sense that it has the same root cause: ca
 
 At this point I think you've guessed it, the solution is the exact same one: follow the `Checks-Effects-Interactions` pattern. Please see the example below and in the [PoC](contracts/ReadOnlyReentrancy.sol):
 
-```
+```solidity
     mapping(address => uint256) public shares;
 
     function withdraw() public {
@@ -150,7 +150,7 @@ At this point I think you've guessed it, the solution is the exact same one: fol
 
 And here is the correct implementation of the `withdraw` function, following the pattern:
 
-```
+```solidity
     mapping(address => uint256) public shares;
 
     function withdraw() public {
@@ -200,14 +200,14 @@ The vulnerability can then appear when in the minting function of a NFT Collecti
 
 ### POC
 
--   Contracts: [OpenZeppelinERC721Reentrancy.sol](contracts/OpenZeppelinERC721Reentrancy.sol)
--   Test: `yarn test test/openZeppelinERC721Reentrancy.ts`
+-   Contracts: [ERC721Reentrancy.sol](contracts/ERC721Reentrancy.sol)
+-   Test: `yarn test test/erc721Reentrancy.ts`
 
 ### Solutions:
 
-As always with the Reentrancy Vulnerabilities, the solution is to follow the `Checks-Effects-Interactions` pattern. Please see the example below and in the [PoC](contracts/OpenZeppelinERC721Reentrancy.sol):
+As always with the Reentrancy Vulnerabilities, the solution is to follow the `Checks-Effects-Interactions` pattern. Please see the example below and in the [PoC](contracts/ERC721Reentrancy.sol):
 
-```
+```solidity
     // Wrong!
     function mint(uint256 tokenId) public {
         // Checks
