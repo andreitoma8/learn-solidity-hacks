@@ -1,5 +1,13 @@
 # Learn about Solidity Hacks and Vulnerabilities
 
+Summary:
+
+-   [Reentrancy](#reentrancy)
+    -   [Single Function Reentrancy](#single-function-reentrancy)
+    -   [Cross-Function Reentrancy](#cross-function-reentrancy)
+    -   [Read Only Reentrancy](#read-only-reentrancy)
+    -   [OpenZeppelin ERC721 Reentrancy](#openzeppelin-erc721-reentrancy)
+
 # Reentrancy
 
 In Solidity, the reentrancy vulnerability is a type of security vulnerability where a function can be recursively called before its first invocation is finished, allowing an attacker to potentially change the state of the contract in unexpected ways. As the name of the hack suggests, this vulnerability is often exploited by calling back into the vulnerable contract, reentering the same function that is currently being executed and modifying the state of the contract before the first invocation is finished.
