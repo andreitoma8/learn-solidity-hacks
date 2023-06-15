@@ -161,3 +161,70 @@ And here is the correct implementation of the `withdraw` function, following the
         (bool success,) = msg.sender.call{value: amount}("");
     }
 ```
+
+## OpenZeppelin ERC721 Reentrancy
+
+[OpenZeppelin](openzeppelin.com) is one of the most used library of Smart Contracts, but used without respecting the `Checks-Effects-Interactions` pattern, it can create ERC721 contracts that are vulnerable to reentrancy attacks on minting tokens.
+
+The [ERC721.sol](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.9.1/contracts/token/ERC721/ERC721.sol) contract of OpenZeppelin has some functions implemented that do callbacks to Smart Contracts to see if they have a way to manage NFTs, with the goal of not getting NFTs stuck in contracts. These functions are: `safeTransferFrom` and `_safeMint`.
+
+```solidity
+    function _safeMint(
+        address to,
+        uint256 tokenId,
+        bytes memory data
+    ) internal virtual {
+        _mint(to, tokenId);
+        require(
+            // The actual private function doing the callback:
+            _checkOnERC721Received(address(0), to, tokenId, data),
+            "ERC721: transfer to non ERC721Receiver implementer"
+        );
+    }
+
+    function _checkOnERC721Received(
+        address from,
+        address to,
+        uint256 tokenId,
+        bytes memory data
+    ) private returns (bool) {
+        if (to.isContract()) {
+            // The callback to the contract is done here:
+            try IERC721Receiver(to).onERC721Received(_msgSender(), from, tokenId, data) returns (bytes4 retval) {
+                return retval == IERC721Receiver.onERC721Received.selector;
+            } catch (bytes memory reason) {
+                ...
+```
+
+The vulnerability can then appear when in the minting function of a NFT Collection the `_safeMint` function is used intead of the `_mint` one and the `Checks-Effects-Interactions` pattern is not followed.
+
+### POC
+
+-   Contracts: [OpenZeppelinERC721Reentrancy.sol](contracts/OpenZeppelinERC721Reentrancy.sol)
+-   Test: `yarn test test/openZeppelinERC721Reentrancy.ts`
+
+### Solutions:
+
+As always with the Reentrancy Vulnerabilities, the solution is to follow the `Checks-Effects-Interactions` pattern. Please see the example below and in the [PoC](contracts/OpenZeppelinERC721Reentrancy.sol):
+
+```
+    // Wrong!
+    function mint(uint256 tokenId) public {
+        // Checks
+        require(!hasMinted[msg.sender], "This address has already minted a token");
+        // Interactions
+        _safeMint(msg.sender, tokenId);
+        // Effects
+        hasMinted[msg.sender] = true;
+    }
+
+    // Correct!
+    function mint(uint256 tokenId) public {
+        // Checks
+        require(!hasMinted[msg.sender], "This address has already minted a token");
+        // Effects
+        hasMinted[msg.sender] = true;
+        // Interactions
+        _safeMint(msg.sender, tokenId);
+    }
+```
