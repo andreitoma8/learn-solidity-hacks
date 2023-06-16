@@ -7,6 +7,7 @@ Summary:
     -   [Cross-Function Reentrancy](#cross-function-reentrancy)
     -   [Read Only Reentrancy](#read-only-reentrancy)
     -   [OpenZeppelin ERC721 Reentrancy](#openzeppelin-erc721-reentrancy)
+-   [Forcefuly send ETH to a contract](#forcefuly-send-eth-to-a-contract)
 
 # Reentrancy
 
@@ -235,4 +236,74 @@ As always with the Reentrancy Vulnerabilities, the solution is to follow the `Ch
         // Interactions
         _safeMint(msg.sender, tokenId);
     }
+```
+
+# Forcefuly send ETH to a contract
+
+It is possible to send ETH to a contract even if it does not have a `receive` or `fallback` function. This is done by calling the `selfdestruct` function on a attacker contract which will send all its ETH to the target contract.
+
+### POC
+
+-   Contracts: [ForceSend.sol](contracts/ForceSend.sol)
+-   Test: `yarn test test/forceSend.ts`
+
+In the following Game example, the contract logic depends on ETH being sent only in amounts on 1 ETH, so sending any other amount would break the game logic.
+
+```solidity
+contract ForceSendVulnerable {
+    uint256 public targetAmount = 7 ether;
+    address public winner;
+
+    // Anyone can deposit 1 Ether and the 7th person to deposit wins all Ether.
+    function deposit() public payable {
+        require(msg.value == 1 ether, "You can only send 1 Ether");
+
+        uint256 balance = address(this).balance;
+        require(balance <= targetAmount, "Game is over");
+
+        // Logic strictly depends on the ETH balance of the contract.
+        if (balance == targetAmount) {
+            winner = msg.sender;
+        }
+    }
+
+    function claimReward() public {
+        require(msg.sender == winner, "Not winner");
+
+        (bool sent,) = msg.sender.call{value: address(this).balance}("");
+        require(sent, "Failed to send Ether");
+    }
+}
+```
+
+### Solutions:
+
+Instead of relying on `address(this).balance` to check the balance of the contract, the contract should use a variable to keep track of the ETH deposited by the players.
+
+```solidity
+contract ForceSendSafe {
+    uint256 public targetAmount = 7 ether;
+    uint256 public totalDeposited;
+    address public winner;
+
+    // Anyone can deposit 1 Ether and the 7th person to deposit wins all Ether.
+    function deposit() public payable {
+        require(msg.value == 1 ether, "You can only send 1 Ether");
+        totalDeposited += msg.value;
+
+        require(totalDeposited <= targetAmount, "Game is over");
+
+        // Logic strictly depends on the ETH balance of the contract.
+        if (totalDeposited == targetAmount) {
+            winner = msg.sender;
+        }
+    }
+
+    function claimReward() public {
+        require(msg.sender == winner, "Not winner");
+
+        (bool sent,) = msg.sender.call{value: address(this).balance}("");
+        require(sent, "Failed to send Ether");
+    }
+}
 ```
