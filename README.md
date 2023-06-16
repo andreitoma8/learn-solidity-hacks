@@ -8,6 +8,7 @@ Summary:
     -   [Read Only Reentrancy](#read-only-reentrancy)
     -   [OpenZeppelin ERC721 Reentrancy](#openzeppelin-erc721-reentrancy)
 -   [Forcefuly send ETH to a contract](#forcefuly-send-eth-to-a-contract)
+-   [Accessing Private State Variables](#accessing-private-state-variables)
 
 # Reentrancy
 
@@ -307,3 +308,16 @@ contract ForceSendSafe {
     }
 }
 ```
+
+# Accessing Private State Variables
+
+While private state variables are not accessible from outside the contract, this is true only for other contracts. The blockchain is a fully transparent database and anyone can read the state of all contracts.
+
+### POC
+
+-   Contracts: [PrivateState.sol](contracts/PrivateState.sol)
+-   Test: `yarn test test/privateState.ts`
+
+### Solutions:
+
+No sensitive data should ever be stored on the blockchain. If you need to store sensitive data, you should use a private database and only store the hash of the data on the blockchain to later prove the authenticity of the data.
