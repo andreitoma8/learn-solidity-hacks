@@ -9,6 +9,7 @@ Summary:
     -   [OpenZeppelin ERC721 Reentrancy](#openzeppelin-erc721-reentrancy)
 -   [Forcefuly send ETH to a contract](#forcefuly-send-eth-to-a-contract)
 -   [Accessing Private State Variables](#accessing-private-state-variables)
+-   [Insecure Source of Randomness](#insecure-source-of-randomness)
 
 # Reentrancy
 
@@ -321,3 +322,21 @@ While private state variables are not accessible from outside the contract, this
 ### Solutions:
 
 No sensitive data should ever be stored on the blockchain. If you need to store sensitive data, you should use a private database and only store the hash of the data on the blockchain to later prove the authenticity of the data.
+
+# Insecure Source of Randomness
+
+Since Blockchain is a deterministic system, it is not possible to generate random numbers on-chain. As this is an important feature for many applications, a lot of people try using hashes values such as `block.timestamp` or `block.difficulty` to generate random numbers. However, these values are not random and can be manipulated by miners or simply guessed by an attacker.
+
+### POC
+
+-   Contracts: [InsecureRandomness.sol](contracts/InsecureRandomness.sol)
+-   Test: `yarn test test/insecureRandomness.ts`
+
+See how in the PoC, the function `guess`in the vulnerable contract seems hard to guess by having to guess the `block.timestamp` and `blockhash` of the last block, but by simply recreating the same logic in the attacker contract, it is possible to guess the number.
+
+```solidity
+
+### Solutions:
+
+Use a Chainlink VRF oracle to generate random numbers on-chain. It will be a more expensive opperation, but I'll have verified randomness for your Smart Contract. See the [Chainlink VRF documentation](https://docs.chain.link/docs/chainlink-vrf/) for more information.
+```
