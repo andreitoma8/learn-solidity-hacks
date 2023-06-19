@@ -335,8 +335,16 @@ Since Blockchain is a deterministic system, it is not possible to generate rando
 See how in the PoC, the function `guess`in the vulnerable contract seems hard to guess by having to guess the `block.timestamp` and `blockhash` of the last block, but by simply recreating the same logic in the attacker contract, it is possible to guess the number.
 
 ```solidity
+// Guess the correct number to win the entire contract's balance.
+    function guess(uint256 _guess) public {
+        uint256 answer = uint256(keccak256(abi.encodePacked(blockhash(block.number - 1), block.timestamp)));
+        if (_guess == answer) {
+            (bool success,) = msg.sender.call{value: address(this).balance}("");
+            require(success, "Transfer failed.");
+        }
+    }
+```
 
 ### Solutions:
 
 Use a Chainlink VRF oracle to generate random numbers on-chain. It will be a more expensive opperation, but I'll have verified randomness for your Smart Contract. See the [Chainlink VRF documentation](https://docs.chain.link/docs/chainlink-vrf/) for more information.
-```
