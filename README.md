@@ -10,6 +10,8 @@ Summary:
 -   [Forcefuly send ETH to a contract](#forcefuly-send-eth-to-a-contract)
 -   [Accessing Private State Variables](#accessing-private-state-variables)
 -   [Insecure Source of Randomness](#insecure-source-of-randomness)
+-   [Denial of Service](#denial-of-service)
+    -   [Reject Ether transfer](#reject-ether-transfer)
 
 # Reentrancy
 
@@ -348,3 +350,73 @@ See how in the PoC, the function `guess`in the vulnerable contract seems hard to
 ### Solutions:
 
 Use a Chainlink VRF oracle to generate random numbers on-chain. It will be a more expensive opperation, but I'll have verified randomness for your Smart Contract. See the [Chainlink VRF documentation](https://docs.chain.link/docs/chainlink-vrf/) for more information.
+
+# Denial of Service
+
+## Reject Ether transfer
+
+This vulnerability comes from calls to unknown addresses(contracts). If the contract does not have a `receive` or `fallback` function and the transaction is reverted, this results in a denial of service for any user trying to use the function with this logic.
+
+### POC
+
+-   Contracts: [RejectEther.sol](contracts/RejectEther.sol)
+-   Test: `yarn test test/rejectEther.ts`
+
+Consider the following Auction contract used in the PoC, if a malicious actor sends a bit from a smart contract with no `receive` or `fallback` function, the transaction will be reverted and the malicious actor will be able to block the auction from receiving any more bids.
+
+```solidity
+contract RejectEtherVulnerable {
+    address public highestBidder;
+    uint256 public highestBid;
+
+    function bid() public payable {
+        // Reject new bids that are lower than the current highest bid.
+        require(msg.value > highestBid, "Bid not high enough");
+
+        // Refund the current highest bidder, if it exists.
+        if (highestBidder != address(0)) {
+            (bool refunded,) = highestBidder.call{value: highestBid}("");
+            require(refunded, "Failed to refund previous bidder");
+        }
+
+        // Update the current highest bid.
+        highestBidder = msg.sender;
+        highestBid = msg.value;
+    }
+}
+```
+
+### Solutions:
+
+Use the `Pull over Push` Smart Contract design pattern. Instead of sending the ETH to the contract, the user should call a function to withdraw the ETH from the contract. We'll use a mapping to keep track of the ETH balance of each user and add a `withdraw` function to allow users to get their bid refunded after it is overbid.
+
+```solidity
+contract RejectEtherSafe {
+    address public highestBidder;
+    uint256 public highestBid;
+    mapping(address => uint256) public availableRefund;
+
+    function bid() public payable {
+        // Reject new bids that are lower than the current highest bid.
+        require(msg.value > highestBid, "Bid not high enough");
+
+        // Refund the current highest bidder, if it exists.
+        if (highestBidder != address(0)) {
+            availableRefund[highestBidder] += highestBid;
+        }
+
+        // Update the current highest bid.
+        highestBidder = msg.sender;
+        highestBid = msg.value;
+    }
+
+    function withdraw() public {
+        uint256 amount = availableRefund[msg.sender];
+        require(amount > 0, "Nothing to withdraw");
+        availableRefund[msg.sender] = 0;
+
+        (bool refunded,) = msg.sender.call{value: amount}("");
+        require(refunded, "Failed to refund bidder");
+    }
+}
+```
