@@ -12,6 +12,7 @@ Summary:
 -   [Insecure Source of Randomness](#insecure-source-of-randomness)
 -   [Denial of Service](#denial-of-service)
     -   [Reject Ether transfer](#reject-ether-transfer)
+    -   [DoS with Block Gas Limit](#dos-with-block-gas-limit)
 
 # Reentrancy
 
@@ -420,3 +421,20 @@ contract RejectEtherSafe {
     }
 }
 ```
+
+## DoS with Block Gas Limit
+
+Each Ethereum block has a gas limit, which is the maximum amount of gas that can be spent in the block. If a transaction requires more gas than the block gas limit, the transaction will be reverted. This can be used by an attacker to block a contract from being used by sending a transaction that requires more gas than the block gas limit.
+
+It is very similar to the previous DoS vulnerability, but can apply to cases where the succes call to the unknown contract is not required. You'll see in the PoC how the attacker for the previous vulnerability does not work on the vulnerable contract and how the new attacker will work.
+
+### POC
+
+-   Contracts: [BlockGasLimit.sol](contracts/BlockGasLimit.sol)
+-   Test: `yarn test test/blockGasLimit.ts`
+
+In the code of the PoC we can see that we don't have any revert in case the call to the unknown contract fails, so not having a `receive` or `fallback` function will not prevent the contract from being used. However, if the implementation of the `fallback` function is too expensive, like a infinite loop that will run out of gas, the contract will be blocked from being used.
+
+### Solutions:
+
+Same as with the previous DoS vulnerability, try avoiding making calls to unknown contract, but if you have to, implement the `Pull over Push` Smart Contract design pattern.
