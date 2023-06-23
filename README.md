@@ -15,6 +15,8 @@ Summary:
     -   [DoS with Block Gas Limit](#dos-with-block-gas-limit)
 -   [Phishing with tx.origin](#phishing-with-txorigin)
 -   [Front Running](#front-running)
+-   [Block timestamp manipulation](#block-timestamp-manipulation)
+-   [Signature replay attack](#signature-replay-attack)
 
 # Reentrancy
 
@@ -569,3 +571,65 @@ contract TimestampManipulationVulnerable {
 ```
 
 The normal chance to win this game is 1 out of 7, but The validator could be able to manipulate the timestamp of the block to make it divisible by 7 and win the game.
+
+# Signature replay attack
+
+A signature replay attack is when a malicious actor uses a signature that was signed to allow for a specific action to replay that action over and over again. This can be used to drain funds from a contract, to impersonate a user, etc.
+
+This attack can happen in 3 cases:
+
+1. User reuses the signed message in the same contract.
+2. User reuses the signed message in a different contract with the same code, but a different address.
+
+### POC
+
+-   Contracts: [SignatureReplay.sol](contracts/SignatureReplay.sol)
+-   Tests: `yarn test test/signatureReplay.ts`
+
+In the PoC, the user will sign a message from user A of a Safe contract to allow the user B to withdraw 1 Ether from the MultiSig contract. The attacker will then replay the signature to withdraw 1 Ether from the Safe contract.
+
+```solidity
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+
+contract SignatureReplayVulnerable {
+    using ECDSA for bytes32;
+
+    address public owner;
+
+    constructor() {
+        owner = msg.sender;
+    }
+
+    function deposit() public payable {}
+
+    // Transfer funds from this contract with a signature from the owner
+    function transfer(address _to, uint256 _amount, bytes memory _signature) external {
+        // Get the hash of the transaction
+        bytes32 txHash = getTxHash(_to, _amount);
+        // Check that the signature is valid for these specific parameters
+        require(_checkSig(_signature, txHash), "Invalid signature");
+
+        // Transfer the funds
+        (bool sc,) = _to.call{value: _amount}("");
+        require(sc, "Failed to send Ether");
+    }
+
+    // Compute the hash of the transaction parameters
+    function getTxHash(address _to, uint256 _amount) public view returns (bytes32) {
+        return keccak256(abi.encodePacked(address(this), _to, _amount));
+    }
+
+    // Check that the signature is valid for these specific parameters and signed by the owner
+    function _checkSig(bytes memory _sig, bytes32 _txHash) internal view returns (bool) {
+        bytes32 ethSignedHash = _txHash.toEthSignedMessageHash();
+
+        address signer = ethSignedHash.recover(_sig);
+        return signer == owner;
+    }
+}
+```
+
+### Solutions:
+
+1. For the first case, we can add a nonce to the signed message to prevent the user from reusing the same signed message. So the message will be composed of the address `_to`, the amount `_amount`, and the nonce `_nonce`. The nonce can be a simple counter that is incremented every time the user signs a message and so no signed message can be reused.
+2. For the second case, we can add the address of the contract to the signed message to prevent the user from reusing the same signed message in a different contract, so the message will be composed of the address `_to`, the amount `_amount`, the nonce `_nonce`, and the address of the contract which we can get from `address(this)` to verify.
