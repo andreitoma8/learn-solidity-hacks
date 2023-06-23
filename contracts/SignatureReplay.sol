@@ -23,7 +23,7 @@ contract SignatureReplayVulnerable {
     }
 
     function getTxHash(address _to, uint256 _amount) public view returns (bytes32) {
-        return keccak256(abi.encodePacked(address(this), _to, _amount));
+        return keccak256(abi.encodePacked(_to, _amount));
     }
 
     function _checkSig(bytes memory _sig, bytes32 _txHash) internal view returns (bool) {
