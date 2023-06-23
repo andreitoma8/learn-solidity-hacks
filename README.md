@@ -17,6 +17,7 @@ Summary:
 -   [Front Running](#front-running)
 -   [Block timestamp manipulation](#block-timestamp-manipulation)
 -   [Signature replay attack](#signature-replay-attack)
+-   [Contract with Zero Code Size](#contract-with-zero-code-size)
 
 # Reentrancy
 
@@ -27,7 +28,7 @@ In Solidity, the reentrancy vulnerability is a type of security vulnerability wh
 ### POC
 
 -   Contracts: [Reentrancy.sol](contracts/Reentrancy.sol)
--   Test: `yarn test test/reentrancy.ts`
+-   Test: `yarn hardhat test test/reentrancy.ts`
 
 #### The DAO Hack
 
@@ -147,7 +148,7 @@ Read only reentrancy is similar in the sense that it has the same root cause: ca
 ### POC
 
 -   Contracts: [ReadOnlyReentrancy.sol](contracts/ReadOnlyReentrancy.sol)
--   Test: `yarn test test/readOnlyReentrancy.ts`
+-   Test: `yarn hardhat test test/readOnlyReentrancy.ts`
 
 ### Solutions:
 
@@ -219,7 +220,7 @@ The vulnerability can then appear when in the minting function of a NFT Collecti
 ### POC
 
 -   Contracts: [ERC721Reentrancy.sol](contracts/ERC721Reentrancy.sol)
--   Test: `yarn test test/erc721Reentrancy.ts`
+-   Test: `yarn hardhat test test/erc721Reentrancy.ts`
 
 ### Solutions:
 
@@ -254,7 +255,7 @@ It is possible to send ETH to a contract even if it does not have a `receive` or
 ### POC
 
 -   Contracts: [ForceSend.sol](contracts/ForceSend.sol)
--   Test: `yarn test test/forceSend.ts`
+-   Test: `yarn hardhat test test/forceSend.ts`
 
 In the following Game example, the contract logic depends on ETH being sent only in amounts on 1 ETH, so sending any other amount would break the game logic.
 
@@ -324,7 +325,7 @@ While private state variables are not accessible from outside the contract, this
 ### POC
 
 -   Contracts: [PrivateState.sol](contracts/PrivateState.sol)
--   Test: `yarn test test/privateState.ts`
+-   Test: `yarn hardhat test test/privateState.ts`
 
 ### Solutions:
 
@@ -365,7 +366,7 @@ This vulnerability comes from calls to unknown addresses(contracts). If the cont
 ### POC
 
 -   Contracts: [RejectEther.sol](contracts/RejectEther.sol)
--   Test: `yarn test test/rejectEther.ts`
+-   Test: `yarn hardhat test test/rejectEther.ts`
 
 Consider the following Auction contract used in the PoC, if a malicious actor sends a bit from a smart contract with no `receive` or `fallback` function, the transaction will be reverted and the malicious actor will be able to block the auction from receiving any more bids.
 
@@ -450,7 +451,7 @@ The `tx.origin` variable is used to get the address of the sender of the transac
 ### POC
 
 -   Contracts: [PhishingTxOrigin.sol](contracts/PhishingTxOrigin.sol)
--   Test: `yarn test test/phishingTxOrigin.ts`
+-   Test: `yarn hardhat test test/phishingTxOrigin.ts`
 
 In the PoC, the attacker contract will bait the owner of the vulnerable contract to call it's `winFreeMoney()` function and in the function logic will call the vulnerable contract's `transferOwnership()` function. The vulnerable contract won't care who called the function as long as the transaction was initiated by the owner of the contract, which is the case here, so the attacker will be able to take ownership of the vulnerable contract.
 
@@ -584,7 +585,7 @@ This attack can happen in 3 cases:
 ### POC
 
 -   Contracts: [SignatureReplay.sol](contracts/SignatureReplay.sol)
--   Tests: `yarn test test/signatureReplay.ts`
+-   Tests: `yarn hardhat test test/signatureReplay.ts`
 
 In the PoC, the user will sign a message from user A of a Safe contract to allow the user B to withdraw 1 Ether from the MultiSig contract. The attacker will then replay the signature to withdraw 1 Ether from the Safe contract.
 
@@ -633,3 +634,45 @@ contract SignatureReplayVulnerable {
 
 1. For the first case, we can add a nonce to the signed message to prevent the user from reusing the same signed message. So the message will be composed of the address `_to`, the amount `_amount`, and the nonce `_nonce`. The nonce can be a simple counter that is incremented every time the user signs a message and so no signed message can be reused.
 2. For the second case, we can add the address of the contract to the signed message to prevent the user from reusing the same signed message in a different contract, so the message will be composed of the address `_to`, the amount `_amount`, the nonce `_nonce`, and the address of the contract which we can get from `address(this)` to verify.
+
+# Contract with Zero Code Size
+
+A common pattern used by Solidity Developers to check if a address is a EOA(externally owned address) or a Smart Contract is to check the code size of the address. They assume that if the code size is 0, the address is a EOA, and if the code size is greater than 0, the address is a Smart Contract.
+
+This is a bad practice because the `extcodesize` opcode returns the code size of the runtime code, so if we call the `extcodesize` while the constructor is still running, the code size will be 0, because the runtime code is not deployed yet.
+
+### POC
+
+-   Contracts: [ZeroCodeSize.sol](contracts/ZeroCodeSize.sol)
+-   Tests: `yarn hardhat test test/zeroCodeSize.ts`
+
+Consider the following Smart Contract where the accessed variable can only be set to true by a EOA, but the attacker can call the `access()` function from a Smart Contract because the function is called in the constructor of the attacker contract.
+
+```solidity
+contract ZeroCodeSizeVulnerable {
+    bool public accessed;
+
+    function isContract(address _addr) public view returns (bool) {
+        uint256 size;
+        assembly {
+            size := extcodesize(_addr)
+        }
+        return size > 0;
+    }
+
+    function access() public {
+        require(!isContract(msg.sender), "Only EOA");
+        accessed = true;
+    }
+}
+
+contract ZeroCodeSizeAttacker {
+    constructor(ZeroCodeSizeVulnerable _victim_) {
+        _victim_.access();
+    }
+}
+```
+
+### Solutions:
+
+The solution in this kind of situation is to avoid using this pattern at all. It was even removed from the [OpenZeppelin Address](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/utils/Address.sol) library in a recent new version, for this very reason.
