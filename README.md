@@ -330,7 +330,7 @@ No sensitive data should ever be stored on the blockchain. If you need to store 
 
 # Insecure Source of Randomness
 
-Since Blockchain is a deterministic system, it is not possible to generate random numbers on-chain. As this is an important feature for many applications, a lot of people try using hashes values such as `block.timestamp` or `block.difficulty` to generate random numbers. However, these values are not random and can be manipulated by miners or simply guessed by an attacker.
+Since Blockchain is a deterministic system, it is not possible to generate random numbers on-chain. As this is an important feature for many applications, a lot of people try using hashes values such as `block.timestamp` or `block.difficulty` to generate random numbers. However, these values are not random and can be manipulated by validators or simply guessed by an attacker.
 
 ### POC
 
@@ -501,12 +501,12 @@ Front running is one of the more diverse attacks in the Smart Contract space and
 The flow of a front running attack is as follows:
 
 1. The attacker monitors the mempool for transactions that they can front run to make a profit.
-2. A user sends a transaction to the transaction pool from which the miner will pick transactions to include in the next block.
+2. A user sends a transaction to the transaction pool from which the validator will pick transactions to include in the next block.
 3. The attacker identifies the transaction that they want to front run and sends a transaction with a higher gas price to the transaction pool that can:
     - Include the same logic as the transaction that they want to front run, with a higher gas price, so they can get the same result as the user, claiming the profit for themselves.
     - Include logic that will make the transaction that they want to front run fail.
     - Include logic that will make the transaction that they want to front run lose money and create a opportunity for the attacker to make a profit.
-4. Due to the higher gas price, the attacker's transaction will be picked by the miner to be included in the next block, instead of the user's transaction.
+4. Due to the higher gas price, the attacker's transaction will be picked by the validator to be included in the next block, instead of the user's transaction.
 5. The attacker's transaction is mined before the user's transaction, so the attacker can get the result that they want.
 
 ### POC
@@ -541,3 +541,31 @@ contract FrontRunningVulnerable {
 Front-running is a pervasive issue on public blockchains such as Ethereum. The best remediation is to remove the benefit of front-running in your application, mainly by removing the importance of transaction ordering or time. Another way is to use a pre-commit scheme (“I’m going to submit the details later”).
 
 Protocol-level solutions such as [Flashbots](https://docs.flashbots.net/flashbots-auction/searchers/advanced/rpc-endpoints/) or [Submarine Commits](https://libsubmarine.org/) are also being developed or user to mitigate the issue.
+
+# Block timestamp manipulation
+
+Be aware that the timestamp of the block can be manipulated by the validator, and all direct and indirect uses of the timestamp should be considered. It should also go without saying that the timestamp of the block should never be used for producing randomness, as it can be manipulated.
+
+The rule to keep in mind when using `block.timestamp` is called `The 15-second rule` and it comes from the fact that the timestamp of the block can be manipulated by the validator, but considering that the Ethereum Yellow Paper states that each blocks timestamp should be bigger than it's parent block timestamp, the validator can only manipulate the timestamp of the block by a maximum of 15 seconds. So remeber:
+
+> If your logic depends on a precision of 15 seconds or less for the use of `block.timestamp`, your contract is vulnerable to manipulation.
+
+### POC
+
+Consider this Smart Contract game where the user can call the `spin()` function and if the block timestamp is divisible by 7, the user wins the game and gets all the Ether in the contract.
+
+```solidity
+contract TimestampManipulationVulnerable {
+
+    function spin() public payable {
+        require(msg.value == 1 ether, "Must send 1 Ether");
+
+        require(block.timestamp % 7 == 0, "Must be divisible by 7");
+
+        (bool sc,) = msg.sender.call{value: address(this).balance}("");
+        require(sc, "Failed to send Ether");
+    }
+}
+```
+
+The normal chance to win this game is 1 out of 7, but The validator could be able to manipulate the timestamp of the block to make it divisible by 7 and win the game.
