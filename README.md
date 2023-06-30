@@ -2,6 +2,7 @@
 
 Summary:
 
+-   [Arithmetic Overflow and Underflow](#arithmetic-overflow-and-underflow)
 -   [Reentrancy](#reentrancy)
     -   [Single Function Reentrancy](#single-function-reentrancy)
     -   [Cross-Function Reentrancy](#cross-function-reentrancy)
@@ -19,6 +20,34 @@ Summary:
 -   [Signature replay attack](#signature-replay-attack)
 -   [Contract with Zero Code Size](#contract-with-zero-code-size)
 -   [Oracle Manipulation](#oracle-manipulation)
+
+# Arithmetic Overflow and Underflow
+
+In Solidity, the arithmetic overflow and underflow vulnerabilities are a type of security vulnerability where an arithmetic operation can result in a number that is too large or too small to be represented by the type used. This can lead to unexpected behavior in the contract, such as a user underflowing their balance and being able to withdraw more than they should be able to.
+
+This vulnerability is not longer a major problem in Solidity 0.8.0 and above, since the compiler now throws an error when an overflow or underflow is detected and the transaction is reverted, but still is still the case of using older versions of Solidity or `unchecked { ... }` blocks.
+
+## POC
+
+-   Contracts: [ArithmeticOverflow.sol](contracts/ArithmeticOverflow.sol)
+-   Test: `yarn hardhat test test/arithmeticOverflow.ts`
+
+Consider the following Smart Contract where the maximum value of the balance is 255. If the balance is 255 and the user deposits 1, the balance will overflow and the balance will be 0. This will make the withdraw function send less than the user expects and get the value stuck in the contract.
+
+```solidity
+contract ArithmeticOverflowVulnerable {
+    uint8 public balance; // Max value of 255
+
+    // Deposit that gets the balance to more than 255 will overflow
+    function deposit(uint8 _amount) public {
+        balance += _amount;
+    }
+
+    function withdraw() external {
+        // Send balance to msg.sender ...
+    }
+}
+```
 
 # Reentrancy
 
